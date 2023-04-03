@@ -1,0 +1,94 @@
+// avimac by j-a-s-d
+
+#include "avimac.h"
+
+#define AVIMAC_NOP        0x00
+#define AVIMAC_HLT        0x01
+#define AVIMAC_JMP        0x02
+#define AVIMAC_JMP_TRUE   0x03
+#define AVIMAC_JMP_FALSE  0x04
+#define AVIMAC_STK_POP    0x05
+#define AVIMAC_STK_PUSH   0x06
+#define AVIMAC_STR_LOAD   0x07
+
+static void op_NOP(struct Avimac* vm)
+  // 0x00 - NOP (noop)
+  // no operation
+  return;
+
+static void op_HLT(struct Avimac* vm)
+  // 0x01 - HLT (halt)
+  // stops program execution
+  vm->registers.elc = AVIMAC_ERRORS_USER_EXIT;
+  vm->running_flag = false;
+
+static void op_JMP(struct Avimac* vm)
+  // 0x02 - JMP (jump)
+  // goes to the specified instruction number in code
+  if (vm->branches_limit > NOTHING)
+    if (vm->branches_count++ == vm->branches_limit)
+      vm->registers.elc = AVIMAC_ERRORS_BRANCHING_LIMIT;
+      vm->running_flag = false;
+      return;
+  const word destination = fetchBigEndianWordOperand(vm, 1);
+  word ip = 0;
+  word current = 0;
+  while (vm->code_size > ip)
+    if (destination == current++)
+      vm->registers.nip = ip;
+      return;
+    ip += vm->instructions_table[vm->code_memory[ip]].operands_length + 1;
+  vm->registers.elc = AVIMAC_ERRORS_JUMP_OOB;
+  vm->running_flag = false;
+
+static void op_JMP_TRUE(struct Avimac* vm)
+  // 0x03 - JT (jump if success)
+  // goes to the specified instruction number in code if the success flag is true
+  if (vm->success_flag)
+    op_JMP(vm);
+
+static void op_JMP_FALSE(struct Avimac* vm)
+  // 0x04 - JF (jump if no success)
+  // goes to the specified instruction number in code if the success flag is false
+  if (!vm->success_flag)
+    op_JMP(vm);
+
+static void op_STK_POP(struct Avimac* vm)
+  // 0x05 - POP (stack pop)
+  // fetches a byte from the stack and stores it into the bts[0] register
+  byte tmp = 0;
+  if (vm->success_flag = stackPop(vm, &tmp))
+    vm->registers.bts[0] = tmp;
+  else
+    vm->registers.elc = AVIMAC_ERRORS_STACK_OOB;
+
+static void op_STK_PUSH(struct Avimac* vm)
+  // 0x06 - PUSH (stack push)
+  // stores the instruction operand (a byte) and stores it into the stack
+  if (!(vm->success_flag = stackPush(vm, fetchByteOperand(vm, 1))))
+    vm->registers.elc = AVIMAC_ERRORS_STACK_OOB;
+
+static void op_STR_LOAD(struct Avimac* vm)
+  // 0x07 - LDS (string load)
+  // fetches a string of the specified size from the code memory and stores it into the string register
+  const byte length = fetchByteOperand(vm, 1);
+  if (vm->success_flag = length <= AVIMAC_STRING_SIZE)
+    for (word x = 0; x < AVIMAC_STRING_SIZE; x++)
+      if (x < length)
+        vm->registers.str[x] = fetchByteOperand(vm, x + 2);
+        vm->registers.nip++;
+      else
+        vm->registers.str[x] = NOTHING;
+  else
+    vm->registers.elc = AVIMAC_ERRORS_REGISTER_OOB;
+
+static void registerDefaultInstructionSet(struct Avimac* vm)
+  registerInstruction(vm, AVIMAC_NOP, 0, op_NOP);
+  registerInstruction(vm, AVIMAC_HLT, 1, op_HLT);
+  registerInstruction(vm, AVIMAC_JMP, 2, op_JMP);
+  registerInstruction(vm, AVIMAC_JMP_TRUE, 2, op_JMP_TRUE);
+  registerInstruction(vm, AVIMAC_JMP_FALSE, 2, op_JMP_FALSE);
+  registerInstruction(vm, AVIMAC_STK_POP, 0, op_STK_POP);
+  registerInstruction(vm, AVIMAC_STK_PUSH, 1, op_STK_PUSH);
+  registerInstruction(vm, AVIMAC_STR_LOAD, 1, op_STR_LOAD);
+

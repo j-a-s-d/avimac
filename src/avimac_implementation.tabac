@@ -1,0 +1,156 @@
+// avimac by j-a-s-d
+
+#include "avimac.h"
+#include "avimac_instructions.h"
+
+void setBranchingLimit(Avimac* vm, const word maximum)
+  vm->branches_count = 0;
+  vm->branches_limit = maximum;
+
+static void resetUserRegisters(Avimac* vm)
+  for (word x = 0; x < AVIMAC_BYTES_SIZE; x++)
+    vm->registers.bts[x] = NOTHING;
+  for (word x = 0; x < AVIMAC_STRING_SIZE; x++)
+    vm->registers.str[x] = NOTHING;
+
+static inline void resetControlRegisters(Avimac* vm)
+  vm->registers.csp = 0;
+  vm->registers.cip = 0;
+  vm->registers.nip = 0;
+  vm->registers.elc = NOTHING;
+
+static inline void resetInstructions(Avimac* vm)
+  for (word x = 0; x < AVIMAC_INSTRUCTIONS_SIZE; x++)
+    vm->instructions_table[x].operands_length = 0;
+    vm->instructions_table[x].operating_executor = NOTHING;
+  registerDefaultInstructionSet(vm);
+
+static inline void resetFlags(Avimac* vm)
+  vm->running_flag = false;
+  vm->success_flag = false;
+
+static inline void resetStack(Avimac* vm)
+  for (word x = 0; x < AVIMAC_STACK_SIZE; x++)
+    vm->stack_space[x] = NOTHING;
+
+static inline void resetCode(Avimac* vm)
+  vm->code_memory = NOTHING;
+  vm->code_size = 0;
+
+void resetState(Avimac* vm)
+  if (!vm) return;
+  vm->cycles_count = 0;
+  setBranchingLimit(vm, NOTHING);
+  resetUserRegisters(vm);
+  resetControlRegisters(vm);
+  resetInstructions(vm);
+  resetFlags(vm);
+  resetStack(vm);
+  resetCode(vm);
+
+static inline const AvimacInstruction makeAvimacInstruction(const byte operands_count, const AvimacCallback operating_executor)
+  return { operands_count, operating_executor };
+
+void registerInstruction(Avimac* vm, const byte opcode, const byte operands, const AvimacCallback executor)
+  if (vm) vm->instructions_table[opcode] = makeAvimacInstruction(operands, executor);
+
+bool stackPush(Avimac* vm, const byte value)
+  if (vm && vm->registers.csp <= AVIMAC_STACK_SIZE)
+    vm->stack_space[vm->registers.csp] = value;
+    vm->registers.csp++;
+    return true;
+  return false;
+
+bool stackPop(Avimac* vm, byte* value)
+  if (vm && vm->registers.csp > 0)
+    vm->registers.csp--;
+    *value = vm->stack_space[vm->registers.csp];
+    return true;
+  return false;
+
+bool stackPeek(Avimac* vm, byte* value)
+  if (vm && vm->registers.csp > 0)
+    *value = vm->stack_space[vm->registers.csp - 1];
+    return true;
+  return false;
+
+#define fetchByte(index) vm->code_memory[vm->registers.cip + index]
+
+byte fetchOpcode(Avimac* vm)
+  if (!vm) return NOTHING;
+  return fetchByte(0);
+
+byte fetchByteOperand(Avimac* vm, const byte index)
+  if (!vm) return NOTHING;
+  return fetchByte(index);
+
+word fetchBigEndianWordOperand(Avimac* vm, const byte index)
+  if (!vm) return NOTHING;
+  return (fetchByte(index) << 8) + fetchByte(index + 1);
+
+word fetchLittleEndianWordOperand(Avimac* vm, const byte index)
+  if (!vm) return NOTHING;
+  return (fetchByte(index + 1) << 8) + fetchByte(index);
+
+void setCode(Avimac* vm, const byte* code, const word length)
+  if (!vm) return;
+  vm->code_memory = code;
+  vm->code_size = length;
+
+void executeCode(Avimac* vm, const AvimacCallback onBeforeExecuteInstruction, const AvimacCallback onAfterExecuteInstruction)
+  if (!vm) return;
+  vm->running_flag = true;
+  vm->registers.elc = NOTHING;
+  while (vm->running_flag && vm->registers.elc == NOTHING)
+    vm->cycles_count++;
+    // instruction cycle stage: fetch
+    const AvimacInstruction current_instruction = vm->instructions_table[fetchOpcode(vm)];
+    if (current_instruction.operating_executor == NOTHING)
+      vm->registers.elc = AVIMAC_ERRORS_OPCODE_UNKNOWN;
+      break;
+    // instruction cycle stage: decode
+    vm->registers.nip = vm->registers.cip + current_instruction.operands_length + 1;
+    if (vm->registers.nip > vm->code_size)
+      vm->registers.elc = AVIMAC_ERRORS_CODE_OOB;
+      break;
+    // instruction cycle stage: execute
+    if (onBeforeExecuteInstruction != NOTHING)
+      onBeforeExecuteInstruction(vm);
+    current_instruction.operating_executor(vm);
+    if (onAfterExecuteInstruction != NOTHING)
+      onAfterExecuteInstruction(vm);
+    if (vm->registers.nip == vm->code_size)
+	    break;
+	  vm->registers.cip = vm->registers.nip;
+  vm->registers.cip = 0;
+  vm->running_flag = false;
+
+void executeCode(Avimac* vm)
+  if (!vm) return;
+  executeCode(vm, NOTHING, NOTHING);
+
+Avimac* makeAvimac()
+  Avimac* vm = (Avimac*) malloc(sizeof(Avimac));
+  if (vm) resetState(vm);
+  return vm;
+
+byte releaseAvimac(Avimac* vm)
+  if (!vm) return NOTHING;
+  const byte result = vm->registers.elc;
+  free(vm);
+  return result;
+
+byte runAvimacProgram(const byte* program, const word length, const AvimacCallback onSetup, const AvimacCallback onBeforeExecuteInstruction, const AvimacCallback onAfterExecuteInstruction)
+  Avimac* vm = makeAvimac();
+  if (vm)
+    if (onSetup) onSetup(vm);
+    setCode(vm, program, length);
+    executeCode(vm, onBeforeExecuteInstruction, onAfterExecuteInstruction);
+  return releaseAvimac(vm);
+
+byte runAvimacProgram(const byte* program, const word length, const AvimacCallback onSetup)
+  return runAvimacProgram(program, length, onSetup, NOTHING, NOTHING);
+
+byte runAvimacProgram(const byte* program, const word length)
+  return runAvimacProgram(program, length, NOTHING, NOTHING, NOTHING);
+

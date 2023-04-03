@@ -1,0 +1,124 @@
+// avimac by j-a-s-d
+
+#pragma once
+#ifndef _AVIMAC_H_
+#define _AVIMAC_H_
+
+// VERSION CONSTANTS
+#define AVIMAC_VERSION_MAJOR 0
+#define AVIMAC_VERSION_MINOR 7
+#define AVIMAC_VERSION_PATCH 0
+
+#include <stdlib.h>
+
+// PLATFORM SPECIFIC
+#if defined(__AVR__)
+
+  #include <Arduino.h>
+
+#endif
+
+#if defined(__unix__)
+
+  #include <stdint.h>
+  #include <stdbool.h>
+
+  typedef uint8_t byte;
+  typedef uint16_t word;
+
+#endif
+
+// COMMON DEFINITIONS
+typedef unsigned long dword;
+#define NOTHING 0
+
+// ERROR CONSTANTS
+#define AVIMAC_ERRORS_USER_EXIT 1
+#define AVIMAC_ERRORS_OPCODE_UNKNOWN 2
+#define AVIMAC_ERRORS_CODE_OOB 3
+#define AVIMAC_ERRORS_STACK_OOB 4
+#define AVIMAC_ERRORS_JUMP_OOB 5
+#define AVIMAC_ERRORS_REGISTER_OOB 6
+#define AVIMAC_ERRORS_BRANCHING_LIMIT 7
+
+// SIZES CONFIGURATION
+#define AVIMAC_INSTRUCTIONS_SIZE 256
+#define AVIMAC_STACK_SIZE 16
+#define AVIMAC_BYTES_SIZE 16
+#define AVIMAC_STRING_SIZE 32
+
+// TYPE DEFINITIONS
+struct Avimac;
+
+typedef struct Avimac Avimac;
+
+typedef void (*AvimacCallback)(Avimac*);
+
+struct AvimacInstruction
+  byte operands_length;
+  AvimacCallback operating_executor;
+
+typedef struct AvimacInstruction AvimacInstruction;
+
+struct AvimacRegisters
+  // current instruction pointer
+  word cip;
+  // next instruction pointer
+  word nip;
+  // current stack pointer
+  word csp;
+  // user data bytes
+  byte bts[AVIMAC_BYTES_SIZE];
+  // user data string
+  char str[AVIMAC_STRING_SIZE];
+  // error level code
+  byte elc;
+
+struct Avimac
+  AvimacInstruction instructions_table[AVIMAC_INSTRUCTIONS_SIZE];
+  AvimacRegisters registers;
+  // execution running status
+  bool running_flag;
+  // last instruction result
+  bool success_flag;
+  // private stack space
+  byte stack_space[AVIMAC_STACK_SIZE];
+  // external code memory
+  const byte* code_memory;
+  // code memory size
+  word code_size;
+  // branching maximum
+  word branches_limit;
+  // branching counter
+  word branches_count;
+  // cycling counter
+  dword cycles_count;
+
+// DETAILED USAGE API
+Avimac* makeAvimac();
+byte releaseAvimac(Avimac* vm);
+void setCode(Avimac* vm, const byte* code, const word length);
+void executeCode(Avimac* vm);
+void executeCode(Avimac* vm, const AvimacCallback onBeforeExecuteInstruction, const AvimacCallback onAfterExecuteInstruction);
+void resetState(Avimac* vm);
+void setBranchingLimit(Avimac* vm, const word maximum);
+
+// CUSTOM INSTRUCTIONS ROUTINES
+void registerInstruction(Avimac* vm, const byte opcode, const byte operands, const AvimacCallback executor);
+byte fetchOpcode(Avimac* vm);
+byte fetchByteOperand(Avimac* vm, const byte index);
+word fetchBigEndianWordOperand(Avimac* vm, const byte index);
+word fetchLittleEndianWordOperand(Avimac* vm, const byte index);
+
+// EXTERNAL STACK MANIPULATION
+bool stackPush(Avimac* vm, const byte value);
+bool stackPop(Avimac* vm, byte* value);
+bool stackPeek(Avimac* vm, byte* value);
+
+// TOP-LEVEL USAGE ROUTINES
+byte runAvimacProgram(const byte* program, const word length);
+byte runAvimacProgram(const byte* program, const word length, const AvimacCallback onSetup);
+byte runAvimacProgram(const byte* program, const word length, const AvimacCallback onSetup, const AvimacCallback onBeforeExecuteInstruction, const AvimacCallback onAfterExecuteInstruction);
+
+#endif
+

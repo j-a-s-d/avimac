@@ -1,0 +1,17 @@
+// avimac by j-a-s-d
+
+#include "src/test_avimac.h"
+#include <HardwareSerial.h>
+
+void echo(const char* msg)
+  Serial.println(msg);
+
+void debug(const byte val)
+  Serial.println(val);
+
+void setup()
+  test();
+
+void loop()
+  return;
+

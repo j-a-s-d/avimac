@@ -1,0 +1,15 @@
+// avimac by j-a-s-d
+
+#include "src/test_avimac.h"
+#include <stdio.h>
+
+void echo(const char* msg)
+  printf("%s\n", msg);
+
+void debug(const byte val)
+  printf("%d\n", val);
+
+int main()
+  test();
+  return 0;
+

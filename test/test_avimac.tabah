@@ -1,0 +1,83 @@
+// avimac by j-a-s-d
+
+#include "avimac.h"
+
+void echo(const char* msg);
+void debug(const byte val);
+
+#define CUSTOM_PSTR 0x10
+
+void op_PSTR(Avimac* vm)
+  // 0x08 - PTS (string print)
+  // prints the content of the string register
+  echo(vm->registers.str);
+
+void onSetup(Avimac* vm)
+  //setBranchingLimit(vm, NOTHING);
+  registerInstruction(vm, CUSTOM_PSTR, 0, op_PSTR);
+
+void onBeforeExecuteInstruction(Avimac* vm)
+  // check opcode
+  echo("* TEST FETCHOPCODE");
+  debug(fetchOpcode(vm));
+
+void onAfterExecuteInstruction(Avimac* vm)
+  // check stack
+  if (vm->running_flag)
+    echo("RUNNING");
+  else
+    echo("NOT RUNNING");
+  if (fetchOpcode(vm) == 0x0E)
+    echo("* TEST REGISTER ACCESS");
+    debug(vm->registers.bts[0]);
+    echo("* TEST EXTERNAL STACK MANIPULATION");
+    if (!stackPush(vm, 0xEE))
+      echo("NO PUSH");
+    byte x = 0;
+    if (!stackPeek(vm, &x))
+      echo("NO PEEK");
+    debug(x);
+    x = 0;
+    if (!stackPop(vm, &x))
+      echo("NO POP");
+    debug(x);
+  if (fetchOpcode(vm) == 0x07)
+    debug(vm->registers.str[0]);
+    debug(vm->registers.str[1]);
+    debug(vm->registers.str[2]);
+    debug(vm->registers.str[3]);
+
+void test()
+  const unsigned char prg[] =
+    // 00: PUSH 0xAA
+    0x06,
+    0xAA,
+    // 01: POP
+    0x05,
+    // 02: NOP
+    0x00,
+    // 03: UNHANDLED OPCODE ERROR
+    //0x11,
+    // 03: HLT
+    //0x01,
+    // 03: OOT-OF-BOUNDS JUMP
+    //0x02, 0xEE, 0xEE,
+    // 03: JMP 0x0002
+    //0x02, 0x00, 0x02,
+    // 03: JT 0x0002
+    //0x03, 0x00, 0x02,
+    // 03: JF 0x0002
+    //0x04, 0x00, 0x02,
+    // 03: LSTR "Hey"
+    0x07, 0x03, 0x48, 0x65, 0x79,
+    // 04: PSTR
+    0x10,
+    // 05: NOP
+    0x00,
+  const byte result = runAvimacProgram(prg, sizeof(prg), onSetup, onBeforeExecuteInstruction, onAfterExecuteInstruction);
+  if (result == NOTHING)
+    echo("DONE");
+  else
+    echo("ERROR");
+    debug(result);
+
